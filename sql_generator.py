@@ -5,7 +5,7 @@ load_dotenv()
 
 
 def generate_sql(schema_context, kpis, additional_prompt):
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
     prompt = f"""
 You are an expert analytics engineer and SQL developer.
@@ -106,4 +106,5 @@ Return ONLY ONE SQL query.
 
     sql = completion.choices[0].message.content.strip()
     sql = sql.replace("```sql", "").replace("```", "").strip()
+
     return sql
