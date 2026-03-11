@@ -1,0 +1,109 @@
+from groq import Groq
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
+def generate_sql(schema_context, kpis, additional_prompt):
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+    prompt = f"""
+You are an expert analytics engineer and SQL developer.
+
+Your task is to generate ONE SQL query that calculates ALL the requested KPIs.
+
+You must strictly follow the rules below.
+
+------------------------
+CRITICAL RULES
+------------------------
+
+1. ONLY use tables from the schema: im_dwh_rpt
+2. ALWAYS reference tables using the fully qualified format:
+   im_dwh_rpt.table_name
+
+3. ONLY use columns that exist in the provided schema context.
+   - DO NOT invent columns
+   - DO NOT assume columns
+   - DO NOT use external knowledge
+
+4. Carefully read:
+   - The schema context
+   - The KPI definitions
+   - The additional instructions
+
+5. When selecting columns:
+   - Choose the column that BEST matches the KPI definition
+   - Prefer columns explicitly referenced in the additional instructions
+   - Use the MINIMUM number of columns necessary
+
+6. If multiple tables contain similar columns:
+   - Select the table whose structure most closely matches the KPI definition
+
+7. Return ALL KPIs in ONE result ROW.
+
+8. Each KPI must be returned as a column with the exact KPI name as the alias.
+
+Example format:
+
+SELECT
+    <metric_calculation> AS kpi_1,
+    <metric_calculation> AS kpi_2,
+    <metric_calculation> AS kpi_3
+FROM ...
+
+9. Use JOINs only when required.
+
+10. Do NOT include:
+    - explanations
+    - comments
+    - markdown
+    - extra text
+
+Return ONLY the SQL query.
+
+------------------------
+REASONING PROCESS (INTERNAL)
+------------------------
+
+Before writing the SQL query:
+
+1. Identify which schema tables contain relevant data.
+2. Identify the columns required to compute each KPI.
+3. Verify that those columns exist in the schema context.
+4. Determine necessary joins between tables.
+5. Construct the SQL query that calculates all KPIs in one result.
+
+Do NOT output this reasoning.
+
+------------------------
+SCHEMA CONTEXT
+------------------------
+{schema_context}
+
+------------------------
+KPI DEFINITIONS
+------------------------
+{kpis}
+
+------------------------
+ADDITIONAL INFORMATION
+------------------------
+{additional_prompt}
+
+------------------------
+FINAL OUTPUT
+------------------------
+
+Return ONLY ONE SQL query.
+"""
+
+    completion = client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+
+    sql = completion.choices[0].message.content.strip()
+    sql = sql.replace("```sql", "").replace("```", "").strip()
+    return sql
