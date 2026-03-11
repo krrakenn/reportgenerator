@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 REDASH_URL = "https://redash.intermesh.net"
-API_KEY = os.getenv("API_KEY")
+API_KEY = st.secrets["API_KEY"]
 DATA_SOURCE_ID = 8
 
 headers = {
@@ -70,4 +70,5 @@ def run_sql(sql: str):
     final_data = final_response.json()
 
     rows = final_data["query_result"]["data"]["rows"]
+
     return pd.DataFrame(rows)
