@@ -1,3 +1,4 @@
+import streamlit as st
 from groq import Groq
 import os
 from dotenv import load_dotenv
@@ -108,3 +109,4 @@ Return ONLY ONE SQL query.
     sql = sql.replace("```sql", "").replace("```", "").strip()
 
     return sql
+
