@@ -1,0 +1,6 @@
+groq
+pandas
+numpy
+python-dotenv
+requests
+time
