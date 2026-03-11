@@ -1,3 +1,4 @@
+import streamlit as st
 import requests
 import time
 import pandas as pd
@@ -72,3 +73,4 @@ def run_sql(sql: str):
     rows = final_data["query_result"]["data"]["rows"]
 
     return pd.DataFrame(rows)
+
