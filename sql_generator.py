@@ -1,12 +1,15 @@
+from openai import OpenAI
 import streamlit as st
-from groq import Groq
 import os
 from dotenv import load_dotenv
 load_dotenv()
 
 
 def generate_sql(schema_context, kpis, additional_prompt):
-    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+    client = OpenAI(
+        api_key=st.secrets["LLM_API_KEY"],
+        base_url="https://imllm.intermesh.net/v1"
+    )
 
     prompt = f"""
 You are an expert analytics engineer and SQL developer.
@@ -100,7 +103,7 @@ Return ONLY ONE SQL query.
 """
 
     completion = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
+        model="openai/gpt-5.2",
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
@@ -109,4 +112,5 @@ Return ONLY ONE SQL query.
     sql = sql.replace("```sql", "").replace("```", "").strip()
 
     return sql
+
 
