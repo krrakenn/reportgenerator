@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
-
-from sql_generator import generate_sql, merge_queries_llm
+from sql_generator import generate_sql
 from query_runner import run_sql
 
 st.set_page_config(
@@ -11,16 +10,17 @@ st.set_page_config(
 
 MAX_RETRIES = 3
 
+# -------------------- Load Schema CSV --------------------
 
 @st.cache_data
 def load_schema():
     df = pd.read_csv("restructured_schema.csv")
     return df
 
-
 schema_df = load_schema()
 all_tables = list(schema_df.columns)
 
+# -------------------- Build Schema Context --------------------
 
 def build_schema_context(schema_df, selected_tables):
 
@@ -37,6 +37,8 @@ def build_schema_context(schema_df, selected_tables):
 
     return schema_text
 
+
+# -------------------- Theme Styling --------------------
 
 st.markdown("""
 <style>
@@ -59,135 +61,168 @@ h1, h2, h3, h4 {
 </style>
 """, unsafe_allow_html=True)
 
+# -------------------- Header --------------------
 
-title_col, toggle_col = st.columns([10,2])
-
-with title_col:
-    st.title("Report Generator")
-    st.caption("Generate reports from tables and KPI definitions")
-
-with toggle_col:
-    st.markdown("### ")
-    mode_sql = st.toggle("I have Query")
+st.title("Report Generator")
+st.caption("Generate reports from tables and KPI definitions")
 
 st.divider()
 
+# -------------------- Sidebar --------------------
 
-if not mode_sql:
+with st.sidebar:
 
-    with st.sidebar:
+    st.header("Settings")
 
-        st.header("Settings")
+    MAX_RETRIES = st.number_input(
+        "Maximum Retry Attempts",
+        min_value=1,
+        max_value=5,
+        value=3
+    )
 
-        MAX_RETRIES = st.number_input(
-            "Maximum Retry Attempts",
-            min_value=1,
-            max_value=5,
-            value=3
-        )
+    st.divider()
 
-        st.divider()
+    st.caption(
+        "If the generated SQL fails, the system will retry by providing the error back to the model."
+    )
 
-        st.caption(
-            "If the generated SQL fails, the system will retry by providing the error back to the model."
-        )
+# -------------------- Input Section --------------------
 
-    col1, col2, col3 = st.columns(3, gap="large")
+col1, col2, col3 = st.columns(3, gap="large")
 
-    with col1:
+# -------- Table Selection --------
+with col1:
 
-        st.markdown("### Select Tables")
+    st.markdown("### Select Tables")
 
-        selected_tables = st.multiselect(
-            "Choose tables",
-            options=all_tables,
-            placeholder="Search tables from im_dwh_rpt"
-        )
+    selected_tables = st.multiselect(
+        "Choose tables",
+        options=all_tables,
+        placeholder="Search tables from im_dwh_rpt"
+    )
 
-        if selected_tables:
+    if selected_tables:
 
-            with st.expander("Preview Schema"):
+        with st.expander("Preview Schema"):
 
-                preview_context = build_schema_context(schema_df, selected_tables)
+            preview_context = build_schema_context(schema_df, selected_tables)
 
-                st.text_area(
-                    "Schema Preview",
-                    preview_context,
-                    height=220,
-                    disabled=True
-                )
+            st.text_area(
+                "Schema Preview",
+                preview_context,
+                height=220,
+                disabled=True
+            )
 
-    with col2:
+# -------- KPI Input --------
+with col2:
 
-        st.markdown("### KPI Definitions")
+    st.markdown("### KPI Definitions")
 
-        kpis = st.text_area(
-            "Define KPIs",
-            height=260,
-            placeholder="""
+    kpis = st.text_area(
+        "Define KPIs",
+        height=260,
+        placeholder="""
 Example:
 Daily revenue
 New users per day
 Churn rate
 Top categories by sales
 """
-        )
+    )
 
-    with col3:
+# -------- Additional Instructions --------
+with col3:
 
-        st.markdown("### Conditions/Flags/Filters")
+    st.markdown("### Conditions/Flags/Filters")
 
-        additional_prompt = st.text_area(
-            "Column meanings, flag values, filters",
-            height=200,
-            placeholder="""
+    additional_prompt = st.text_area(
+        "Column meanings, flag values, filters",
+        height=200,
+        placeholder="""
 Example:
 is_active = 1 means active users
 status_flag 0 = inactive
 country_code = 'IN'
 """
-        )
+    )
 
-    run = st.button("Generate Report", use_container_width=True)
+    # Date Filter Checkbox
+    use_date_filter = st.checkbox("Add Date Filter (only if exists)")
 
-    st.divider()
+    if use_date_filter:
 
-    if run:
+        date_col1, date_col2 = st.columns(2)
 
-        if not selected_tables:
-            st.warning("Please select at least one table")
-            st.stop()
+        with date_col1:
+            date_from = st.date_input("From Date")
 
-        if not kpis:
-            st.warning("KPI definitions are required")
-            st.stop()
+        with date_col2:
+            date_to = st.date_input("To Date")
 
-        if not additional_prompt:
-            st.warning("Additional instructions are required")
-            st.stop()
+    else:
+        date_from = None
+        date_to = None
 
-        schema_context = build_schema_context(schema_df, selected_tables)
+st.markdown(" ")
 
-        attempt = 0
-        last_error = None
-        sql = None
+run = st.button("Generate Report", use_container_width=True)
 
-        status = st.status("Running SQL generation", expanded=True)
+st.divider()
 
-        while attempt < MAX_RETRIES:
+# -------------------- Execution --------------------
 
-            attempt += 1
+if run:
 
-            status.write(f"Attempt {attempt}: generating SQL")
+    if not selected_tables:
+        st.warning("Please select at least one table")
+        st.stop()
 
-            if last_error:
+    if not kpis:
+        st.warning("KPI definitions are required")
+        st.stop()
 
-                prompt_kpi = f"""
+    if not additional_prompt:
+        st.warning("Additional instructions are required")
+        st.stop()
+
+    schema_context = build_schema_context(schema_df, selected_tables)
+
+    # -------- Dynamic Date Instruction --------
+    date_instruction = ""
+
+    if use_date_filter and date_from and date_to:
+
+        date_instruction = f"""
+Date Filtering Requirement:
+The report must include data between '{date_from}' and '{date_to}'.
+Use the most appropriate date column from the selected tables.
+Ensure the SQL WHERE clause applies this filter.
+"""
+
+    additional_prompt_final = additional_prompt + "\n" + date_instruction
+
+    attempt = 0
+    last_error = None
+    sql = None
+
+    status = st.status("Running SQL generation", expanded=True)
+
+    while attempt < MAX_RETRIES:
+
+        attempt += 1
+
+        status.write(f"Attempt {attempt}: generating SQL")
+
+        if last_error:
+
+            prompt_kpi = f"""
 KPIs:
 {kpis}
 
 Additional Instructions:
-{additional_prompt}
+{additional_prompt_final}
 
 Previous SQL:
 {sql}
@@ -199,134 +234,44 @@ Fix the SQL.
 Return only SQL.
 """
 
-                sql = generate_sql(schema_context, prompt_kpi, "")
-
-            else:
-
-                sql = generate_sql(schema_context, kpis, additional_prompt)
-
-            try:
-
-                status.write("Executing SQL query")
-
-                result = run_sql(sql)
-
-                status.update(label="Execution completed", state="complete")
-
-                tab1, tab2 = st.tabs(["Result", "Generated SQL"])
-
-                with tab1:
-                    st.dataframe(result, use_container_width=True)
-
-                with tab2:
-                    st.code(sql, language="sql")
-
-                st.success(f"Query succeeded on attempt {attempt}")
-
-                break
-
-            except Exception as e:
-
-                last_error = str(e)
-
-                status.write(f"Attempt {attempt} failed")
-                status.write(last_error)
+            sql = generate_sql(schema_context, prompt_kpi, "")
 
         else:
 
-            status.update(label="Execution failed", state="error")
+            sql = generate_sql(schema_context, kpis, additional_prompt_final)
 
-            st.error("All retry attempts failed")
+        try:
 
-            with st.expander("Last Generated SQL"):
+            status.write("Executing SQL query")
+
+            result = run_sql(sql)
+
+            status.update(label="Execution completed", state="complete")
+
+            tab1, tab2 = st.tabs(["Result", "Generated SQL"])
+
+            with tab1:
+                st.dataframe(result, use_container_width=True)
+
+            with tab2:
                 st.code(sql, language="sql")
 
+            st.success(f"Query succeeded on attempt {attempt}")
 
-else:
+            break
 
-    st.subheader("SQL Query Mode")
+        except Exception as e:
 
-    query_count = st.number_input(
-        "Number of Queries",
-        min_value=1,
-        max_value=5,
-        value=1
-    )
+            last_error = str(e)
 
-    queries = []
+            status.write(f"Attempt {attempt} failed")
+            status.write(last_error)
 
-    for i in range(query_count):
+    else:
 
-        q = st.text_area(
-            f"Query {i+1}",
-            height=160,
-            key=f"query_{i}"
-        )
+        status.update(label="Execution failed", state="error")
 
-        queries.append(q)
+        st.error("All retry attempts failed")
 
-    run_sql_mode = st.button("Run Queries", use_container_width=True)
-
-    st.divider()
-
-    if run_sql_mode:
-
-        valid_queries = [q for q in queries if q.strip()]
-
-        if not valid_queries:
-            st.warning("Please enter at least one SQL query")
-            st.stop()
-
-        with st.spinner("Checking if queries can be merged..."):
-            merged_sql = merge_queries_llm(valid_queries)
-
-        with st.spinner("Executing Query"):
-
-            attempt = 0
-            last_error = None
-            sql = merged_sql
-
-            while attempt < MAX_RETRIES:
-
-                attempt += 1
-
-                try:
-
-                    result = run_sql(sql)
-
-                    tab1, tab2 = st.tabs(["Result", "Generated SQL"])
-
-                    with tab1:
-                        st.dataframe(result, use_container_width=True)
-
-                    with tab2:
-                        st.code(sql, language="sql")
-
-                    break
-
-                except Exception as e:
-
-                    last_error = str(e)
-
-                    prompt = f"""
-Queries:
-{valid_queries}
-
-Previous SQL:
-{sql}
-
-Previous SQL Error:
-{last_error}
-
-Fix the SQL.
-Return only SQL.
-"""
-
-                    sql = merge_queries_llm([prompt])
-
-            else:
-
-                st.error("All retry attempts failed")
-
-                with st.expander("Last Generated SQL"):
-                    st.code(sql, language="sql")
+        with st.expander("Last Generated SQL"):
+            st.code(sql, language="sql")
