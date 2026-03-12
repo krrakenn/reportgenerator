@@ -1,10 +1,50 @@
 from openai import OpenAI
 import streamlit as st
-import os
-from dotenv import load_dotenv
-load_dotenv()
+
+
+def merge_queries_llm(queries):
+
+    client = OpenAI(
+        api_key=st.secrets["LLM_API_KEY"],
+        base_url="https://imllm.intermesh.net/v1"
+    )
+
+    queries_text = "\n\n".join(queries)
+
+    prompt = f"""
+You are an expert SQL developer.
+
+The user provided multiple SQL queries.
+
+If they can be merged into ONE optimized SQL query, merge them.
+
+If they cannot be merged, return them as separate SELECT statements.
+
+RULES
+- Only SELECT queries
+- No INSERT, DELETE, UPDATE
+- Use schema im_dwh_rpt only
+
+Queries:
+{queries_text}
+
+Return ONLY SQL.
+"""
+
+    completion = client.chat.completions.create(
+        model="openai/gpt-5.2",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+
+    sql = completion.choices[0].message.content.strip()
+    sql = sql.replace("```sql", "").replace("```", "").strip()
+
+    return sql
+
 
 def generate_sql(schema_context, kpis, additional_prompt):
+
     client = OpenAI(
         api_key=st.secrets["LLM_API_KEY"],
         base_url="https://imllm.intermesh.net/v1"
@@ -66,20 +106,6 @@ FROM ...
 Return ONLY the SQL query.
 
 ------------------------
-REASONING PROCESS (INTERNAL)
-------------------------
-
-Before writing the SQL query:
-
-1. Identify which schema tables contain relevant data.
-2. Identify the columns required to compute each KPI.
-3. Verify that those columns exist in the schema context.
-4. Determine necessary joins between tables.
-5. Construct the SQL query that calculates all KPIs in one result.
-
-Do NOT output this reasoning.
-
-------------------------
 SCHEMA CONTEXT
 ------------------------
 {schema_context}
@@ -111,6 +137,3 @@ Return ONLY ONE SQL query.
     sql = sql.replace("```sql", "").replace("```", "").strip()
 
     return sql
-
-
-
